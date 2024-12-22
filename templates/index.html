@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CSV/Excel Data Management</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+        }
+        .header {
+            font-size: 1.5em;
+            margin-bottom: 10px;
+        }
+        .input-group {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        .input-group input {
+            margin-right: 10px;
+        }
+        .button {
+            padding: 10px 15px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f4f4f4;
+        }
+    </style>
+</head>
+<body>
+    <div class="section" id="upload-section">
+        <div class="header">Upload File</div>
+        <input type="file" id="file-input">
+        <button class="button" id="upload-btn">Upload</button>
+    </div>
+
+    <div class="section" id="headers-section" style="display: none;">
+        <div class="header">Columns</div>
+        <table id="headers-table">
+            <thead>
+                <tr>
+                    <th>Include</th>
+                    <th>Column Name</th>
+                    <th>Rename</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
+        <button class="button" id="update-columns-btn">Update Columns</button>
+    </div>
+
+    <div class="section" id="add-columns-section" style="display: none;">
+        <div class="header">Add New Columns</div>
+        <div id="new-columns"></div>
+        <button class="button" id="add-column-btn">Add Column</button>
+        <button class="button" id="apply-columns-btn">Apply New Columns</button>
+    </div>
+
+    <div class="section" id="duplicates-section" style="display: none;">
+        <div class="header">Duplicates</div>
+        <button class="button" id="check-duplicates-btn">Check Duplicates</button>
+        <ul id="duplicates-list"></ul>
+        <input type="text" id="duplicates-column" placeholder="Column name">
+        <button class="button" id="show-duplicates-btn">Show Duplicates</button>
+
+        <select id="rows-per-page" class="button">
+            <option value="10">10 rows</option>
+            <option value="20">20 rows</option>
+            <option value="50">50 rows</option>
+            <option value="all">All rows</option>
+        </select>
+        <div id="duplicates-container" style="display: none;">
+            <h3>Duplicates in Column: <span id="duplicates-column-name"></span></h3>
+            <p id="duplicates-total"></p>
+            <div id="pagination-controls">
+                <button id="prev-page" disabled>Previous</button>
+                <span id="page-info"></span>
+                <button id="next-page">Next</button>
+            </div>
+            <table id="duplicates-table">
+                <thead>
+                    <tr>
+                        <th>Select</th>
+                        <!-- Dynamic headers here -->
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Dynamic rows here -->
+                </tbody>
+            </table>
+            <button class="button" id="merge-duplicates-btn">Merge Selected</button>
+            <button class="button" id="delete-duplicates-btn">Delete Selected</button>
+        </div>
+    </div>
+
+    <div class="section" id="phone-section" style="display: none;">
+        <div class="header">Phone Numbers</div>
+        <select id="phone-column-dropdown" class="button">
+            <option value="">Select Column</option>
+        </select>
+        <button class="button" id="show-phone-btn">Show Phone Numbers</button>
+    
+        <select id="phone-rows-per-page" class="button">
+            <option value="10">10 rows</option>
+            <option value="20">20 rows</option>
+            <option value="50">50 rows</option>
+            <option value="all">All rows</option>
+        </select>
+        <div id="phone-container" style="display: none;">
+            <h3>Phone Numbers from Column: <span id="phone-column-name"></span></h3>
+            <p id="phone-total"></p>
+            <div id="pagination-controls">
+                <button id="phone-prev-page" disabled>Previous</button>
+                <span id="phone-page-info"></span>
+                <button id="phone-next-page">Next</button>
+            </div>
+            <table id="phone-table">
+                <thead>
+                    <tr>
+                        <th>Original Phone Numbers</th>
+                        <th>Cleaned Phone Numbers</th>
+                        <th>Country</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Rows will be dynamically added here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="section" id="save-section" style="display: none;">
+        <div class="header">Save File</div>
+        <button class="button" id="save-btn">Save</button>
+        <button class="button" id="download-btn">Download</button>
+    </div>
+
+    <script>
+        let headers = [];
+        let currentPage = 0;
+        let rowsPerPage = 10; // Default rows per page
+        let duplicates = [];
+        let sortOrder = 1; // 1 for ascending, -1 for descending
+        let sortColumn = null;
+    
+        $(document).ready(function () {
+            // Upload File
+            $('#upload-btn').click(uploadFile);
+    
+            // Update Columns
+            $('#update-columns-btn').click(updateColumns);
+    
+            // Add New Columns
+            $('#add-column-btn').click(addNewColumnInput);
+            $('#apply-columns-btn').click(applyNewColumns);
+    
+            // Check and Show Duplicates
+            $('#check-duplicates-btn').click(checkDuplicates);
+            $('#show-duplicates-btn').click(fetchAndDisplayDuplicates);
+    
+            // Process Duplicates (Merge/Delete)
+            $('#merge-duplicates-btn').click(() => processDuplicates('merge'));
+            $('#delete-duplicates-btn').click(() => processDuplicates('delete'));
+    
+            // Save and Download
+            $('#save-btn').click(saveFile);
+            $('#download-btn').click(() => (window.location.href = '/download'));
+    
+            // Pagination Controls
+            $('#prev-page').click(previousPage);
+            $('#next-page').click(nextPage);
+
+            $('#select-all-btn').click(selectAllRows);
+            $('#rows-per-page').change(changeRowsPerPage);
+        });
+    
+        function uploadFile() {
+            const fileInput = $('#file-input')[0].files[0];
+            if (!fileInput) {
+                alert('Please upload a file.');
+                return;
+            }
+    
+            const formData = new FormData();
+            formData.append('file', fileInput);
+    
+            $.ajax({
+                url: '/upload',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (response) {
+                    headers = response.headers;
+                    renderHeaders(headers);
+                    populatePhoneColumnDropdown(headers); // Populate phone column dropdown
+                    $('#headers-section, #add-columns-section, #duplicates-section, #save-section, #phone-section, #phone-column-section').show();
+                },
+                error: function (err) {
+                    alert(err.responseJSON?.error || 'Error uploading file.');
+                }
+            });
+        }
+
+        function renderHeaders(headers) {
+            const tbody = $('#headers-table tbody');
+            tbody.empty();
+
+            headers.forEach(header => {
+                tbody.append(`
+                    <tr>
+                        <td><input type="checkbox" class="include-checkbox" value="${header}" checked></td>
+                        <td>${header}</td>
+                        <td><input type="text" class="rename-input" placeholder="Rename ${header}"></td>
+                    </tr>
+                `);
+            });
+        }
+
+        function updateColumns() {
+            const updates = $('#headers-table tbody tr').map(function () {
+                return {
+                    include: $(this).find('.include-checkbox').is(':checked'),
+                    name: $(this).find('.include-checkbox').val().replace(/"/g, '').trim(), // Sanitize name
+                    rename: $(this).find('.rename-input').val().trim()
+                };
+            }).get();
+
+            console.log("Updating columns with data:", updates);
+
+            $.ajax({
+                url: '/update_columns',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ updates }),
+                success: function (response) {
+                    alert(response.message || 'Columns updated successfully.');
+                    renderHeaders(response.updated_headers);
+                },
+                error: function (err) {
+                    alert(err.responseJSON?.error || 'Error updating columns.');
+                }
+            });
+        }
+
+        function fetchUpdatedHeaders() {
+            $.ajax({
+                url: '/get_headers',
+                type: 'GET',
+                success: function (response) {
+                    headers = response.headers;
+                    renderHeaders(headers); // Re-render the updated headers
+                },
+                error: function (err) {
+                    alert(err.responseJSON?.error || "Error fetching updated headers.");
+                }
+            });
+        }
+    
+        function addNewColumnInput() {
+            $('#new-columns').append(`
+                <div class="input-group">
+                    <input type="text" class="column-name" placeholder="Column name">
+                    <input type="text" class="column-value" placeholder="Default value">
+                </div>
+            `);
+        }
+    
+        function applyNewColumns() {
+            const columns = $('.input-group').map(function () {
+                return {
+                    name: $(this).find('.column-name').val(),
+                    value: $(this).find('.column-value').val()
+                };
+            }).get();
+    
+            $.ajax({
+                url: '/add_columns',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ columns }),
+                success: function (response) {
+                    alert(response.message);
+                },
+                error: function (err) {
+                    alert(err.responseJSON?.error || 'Error adding columns.');
+                }
+            });
+        }
+    
+        function checkDuplicates() {
+            $.ajax({
+                url: '/check_duplicates',
+                type: 'GET',
+                success: function (response) {
+                    if (response.message) {
+                        alert(response.message);
+                    } else {
+                        $('#duplicates-list').empty();
+                        for (let [col, count] of Object.entries(response)) {
+                            $('#duplicates-list').append(`<li>${col}: ${count} duplicates</li>`);
+                        }
+                    }
+                },
+                error: function (err) {
+                    alert(err.responseJSON?.error || 'Error checking duplicates.');
+                }
+            });
+        }
+    
+        function fetchAndDisplayDuplicates() {
+            const column = $('#duplicates-column').val();
+            if (!column) {
+                alert('Please specify a column.');
+                return;
+            }
+
+            $.ajax({
+                url: '/show_duplicates',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ column }),
+                success: function (response) {
+                    console.log("Fetched duplicates response:", response); // Debug
+                    if (response.duplicates?.length) {
+                        duplicates = response.duplicates;
+                        currentPage = 0;
+                        console.log("Duplicates to display:", duplicates); // Debug
+                        renderPage();
+                        $('#duplicates-container').show();
+                    } else {
+                        alert(response.message || 'No duplicates found.');
+                        $('#duplicates-container').hide(); // Hide duplicates container when no duplicates
+                    }
+                },
+                error: function (xhr) {
+                    console.error("Error fetching duplicates:", xhr.responseText || xhr.statusText);
+                    alert(xhr.responseJSON?.error || 'An error occurred while retrieving duplicates.');
+                }
+            });
+        }
+
+        function renderPage() {
+            let paginatedData = duplicates;
+            if (rowsPerPage !== 'all') {
+                const start = currentPage * rowsPerPage;
+                const end = start + rowsPerPage;
+                paginatedData = duplicates.slice(start, end);
+            }
+
+            const tbody = $('#duplicates-table tbody');
+            const table = $('#duplicates-table'); // Correct table reference
+            tbody.empty();
+
+            // Dynamically set headers if not already set
+            const thead = table.find('thead');
+            thead.empty();
+            let headerRow = '<tr><th><input type="checkbox" id="select-all"></th>'; // Add Select All
+            Object.keys(duplicates[0] || {}).forEach(key => {
+                if (key !== 'index') { // Exclude index
+                    headerRow += `<th>${key} <button class="sort-header" data-column="${key}">Sort</button></th>`;
+                }
+            });
+            headerRow += '</tr>';
+            thead.append(headerRow);
+
+            if (paginatedData.length === 0) {
+                tbody.append('<tr><td colspan="100%">No duplicates found!</td></tr>');
+                return;
+            }
+
+            paginatedData.forEach(row => {
+                let tr = '<tr>';
+                tr += `<td><input type="checkbox" class="duplicate-checkbox" data-index="${row.index}"></td>`;
+                Object.keys(row).forEach(key => {
+                    tr += `<td>${row[key] || 'N/A'}</td>`;
+                });
+                tr += '</tr>';
+                tbody.append(tr);
+            });
+
+            $('#page-info').text(`Page ${currentPage + 1} of ${Math.ceil(duplicates.length / rowsPerPage)}`);
+            $('#prev-page').prop('disabled', currentPage === 0);
+            $('#next-page').prop('disabled', rowsPerPage === 'all' || (currentPage + 1) * rowsPerPage >= duplicates.length);
+
+            // Add Select All functionality
+            $('#select-all').change(function () {
+                $('.duplicate-checkbox').prop('checked', this.checked);
+            });
+
+           // Add sorting functionality
+            $('.sort-header').click(function () {
+                const column = $(this).data('column');
+                const isAscending = $(this).data('isAscending') || true;
+
+                // Toggle sorting direction
+                $(this).data('isAscending', !isAscending);
+
+                // Perform sorting
+                duplicates.sort((a, b) => {
+                    const valueA = a[column] || '';
+                    const valueB = b[column] || '';
+                    if (isAscending) {
+                        return valueA.toString().localeCompare(valueB.toString());
+                    } else {
+                        return valueB.toString().localeCompare(valueA.toString());
+                    }
+                });
+
+                renderPage(); // Re-render the sorted duplicates
+            });
+        }
+
+        function selectAllRows() {
+            $('.duplicate-checkbox').prop('checked', true);
+        }
+
+        function changeRowsPerPage() {
+            rowsPerPage = $('#rows-per-page').val() === 'all' ? 'all' : parseInt($('#rows-per-page').val());
+            currentPage = 0;
+            renderPage();
+        }
+
+        function previousPage() {
+            if (currentPage > 0) {
+                currentPage -= 1;
+                renderPage();
+            }
+        }
+    
+        function nextPage() {
+            if ((currentPage + 1) * rowsPerPage < duplicates.length) {
+                currentPage += 1;
+                renderPage();
+            }
+        }
+    
+        function processDuplicates(action) {
+            const selectedIndexes = $('.duplicate-checkbox:checked').map(function () {
+                return $(this).data('index');
+            }).get();
+
+            if (selectedIndexes.length === 0) {
+                alert(`Please select rows to ${action}.`);
+                return;
+            }
+    
+            const column = $('#duplicates-column').val();
+    
+            $.ajax({
+                url: '/process_duplicates',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ action, rows: selectedIndexes, column }),
+                success: function (response) {
+                    alert(response.message || `Duplicates ${action}d successfully.`);
+                    fetchAndDisplayDuplicates(); // Refresh duplicates
+                },
+                error: function (xhr) {
+                    alert(xhr.responseJSON?.error || `Error while ${action}ing duplicates.`);
+                }
+            });
+        }
+    
+        function saveFile() {
+            $.ajax({
+                url: '/save',
+                type: 'POST',
+                success: function(response) {
+                    alert(response.message);
+                },
+                error: function(err) {
+                    alert(err.responseJSON?.error || 'Error saving file.');
+                }
+            });
+        }
+
+        function populatePhoneColumnDropdown(headers) {
+            const dropdown = $('#phone-column-dropdown');
+            dropdown.empty(); // Clear existing options
+            dropdown.append('<option value="">Select Column</option>'); // Default option
+            headers.forEach(header => {
+                dropdown.append(`<option value="${header}">${header}</option>`);
+            });
+        }
+
+        let currentPhonePage = 0;
+        let rowsPerPhonePage = 10; // Default rows per page
+        let phoneNumbers = []; // Store processed phone numbers globally
+
+        // Main function to fetch and display phone numbers
+        function fetchAndDisplayPhoneNumbers() {
+            const column = $('#phone-column-dropdown').val(); // Get selected column
+            if (!column) {
+                alert('Please select a column for phone numbers.');
+                return;
+            }
+
+            // Fetch phone numbers from the backend
+            $.ajax({
+                url: '/process_phone_numbers',
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ column }),
+                success: function (response) {
+                    if (response.phoneNumbers?.length) {
+                        phoneNumbers = response.phoneNumbers;
+                        currentPhonePage = 0; // Reset to the first page
+                        renderPhonePage(); // Render the first page
+                        $('#phone-column-name').text(column);
+                        $('#phone-total').text(`Total: ${phoneNumbers.length} numbers`);
+                        $('#phone-container').show();
+                    } else {
+                        alert(response.message || 'No phone numbers found.');
+                        $('#phone-container').hide(); // Hide container when no phone numbers
+                    }
+                },
+                error: function (err) {
+                    alert(err.responseJSON?.error || 'Error processing phone numbers.');
+                }
+            });
+        }
+
+        // Function to render a specific page of phone numbers
+        function renderPhonePage() {
+            let paginatedData = phoneNumbers;
+
+            if (rowsPerPhonePage !== 'all') {
+                const start = currentPhonePage * rowsPerPhonePage;
+                const end = start + rowsPerPhonePage;
+                paginatedData = phoneNumbers.slice(start, end);
+            }
+
+            const tbody = $('#phone-table tbody');
+            tbody.empty();
+
+            // Dynamically add sorting buttons in the table header
+            const tableHeader = $('#phone-table thead');
+            tableHeader.empty();
+            const headerRow = `
+                <tr>
+                    <th>Original Phone Numbers <button class="sort-phone-header" data-column="original">Sort</button></th>
+                    <th>Cleaned Phone Numbers <button class="sort-phone-header" data-column="cleaned">Sort</button></th>
+                    <th>Country <button class="sort-phone-header" data-column="country">Sort</button></th>
+                </tr>
+            `;
+            tableHeader.append(headerRow);
+
+            // Add sorting functionality
+            $('.sort-phone-header').click(function () {
+                const column = $(this).data('column');
+                const isAscending = $(this).data('isAscending') || true;
+
+                // Toggle sorting direction
+                $(this).data('isAscending', !isAscending);
+
+                // Perform sorting
+                phoneNumbers.sort((a, b) => {
+                    const valueA = a[column] || '';
+                    const valueB = b[column] || '';
+                    if (isAscending) {
+                        return valueA.toString().localeCompare(valueB.toString());
+                    } else {
+                        return valueB.toString().localeCompare(valueA.toString());
+                    }
+                });
+
+                renderPhonePage(); // Re-render the sorted data
+            });
+
+            // Render the rows
+            if (paginatedData.length === 0) {
+                tbody.append('<tr><td colspan="3">No phone numbers found!</td></tr>');
+                return;
+            }
+
+            paginatedData.forEach(row => {
+                const tr = `
+                    <tr>
+                        <td>${row.original || 'N/A'}</td>
+                        <td>${row.cleaned || 'N/A'}</td>
+                        <td>${row.country || 'N/A'}</td>
+                    </tr>
+                `;
+                tbody.append(tr);
+            });
+
+            // Update pagination info
+            $('#phone-page-info').text(`Page ${currentPhonePage + 1} of ${Math.ceil(phoneNumbers.length / rowsPerPhonePage)}`);
+            $('#phone-prev-page').prop('disabled', currentPhonePage === 0);
+            $('#phone-next-page').prop('disabled', rowsPerPhonePage === 'all' || (currentPhonePage + 1) * rowsPerPhonePage >= phoneNumbers.length);
+        }
+
+        // Pagination controls for phone numbers
+        $('#phone-rows-per-page').change(function () {
+            rowsPerPhonePage = $(this).val() === 'all' ? 'all' : parseInt($(this).val());
+            currentPhonePage = 0; // Reset to the first page
+            renderPhonePage();
+        });
+
+        $('#phone-prev-page').click(() => {
+            if (currentPhonePage > 0) {
+                currentPhonePage -= 1;
+                renderPhonePage();
+            }
+        });
+
+        $('#phone-next-page').click(() => {
+            if ((currentPhonePage + 1) * rowsPerPhonePage < phoneNumbers.length) {
+                currentPhonePage += 1;
+                renderPhonePage();
+            }
+        });
+
+        // Event listener to fetch and display phone numbers
+        $('#show-phone-btn').click(fetchAndDisplayPhoneNumbers);
+
+    </script>
+    
+</body>
+</html>
